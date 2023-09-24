@@ -1,0 +1,58 @@
+# import library
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.feature import StandardScaler, VectorAssembler
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+import numpy as np
+from matplotlib import pyplot as plt
+
+# initialize spark object
+spark = SparkSession.builder.getOrCreate()
+
+# load dataset
+data = spark.read.option('inferSchema', 'true').csv('./', header=True)
+
+# select feature
+data = data.select('Global_active_power', 'Global_reactive_power', 'Sub_metering_3')
+
+# preprocess data
+data = data.na.drop()
+
+# transform data
+def transform(df):
+    df = df.withColumn('Global_reactive_power', df['Global_reactive_power'].cast('double'))
+    df = df.withColumn('Global_active_power', df['Global_active_power'].cast('double'))
+    df = df.withColumn('Sub_metering_3', df['Sub_metering_3'].cast('double'))
+    return df
+
+data = transform(data)
+data = data.filter(((col('Sub_metering_3')) != 0.0) &
+                   ((col('Global_active_power')) != 0.0) &
+                   ((col('Global_reactive_power')) != 0.0))
+
+# normalize
+cols = data.columns
+vectorAssembler = VectorAssembler(inputCols=cols, outputCol='AssembledFeatures')
+vector = vectorAssembler.transform(data)
+standardScaler = StandardScaler(inputCol='AssembledFeatures', outputCol='features').fit(vector)
+data = standardScaler.transform(vector)
+
+# generate model
+model = KMeans().setK(2).setSeed(123).fit(data)
+
+# use model
+predictions = model.transform(data)
+
+# check cluster centroid
+centroid = model.clusterCenters()
+centroid_data = [(i, c.tolist()) for (i, c) in enumerate(centroid)]
+centroid_schema = ['cluster', 'centroid']
+centroid_df = spark.createDataFrame(centroid_data, centroid_schema)
+centroid_df.show(truncate=False)
+
+# scatter plot
+prediction_pd = predictions.toPandas()
+plt.scatter(prediction_pd['Global_active_power'],
+            prediction_pd['Global_reactive_power'],
+            c=prediction_pd['prediction'])
+plt.plot()

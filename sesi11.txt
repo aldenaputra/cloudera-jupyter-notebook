@@ -1,0 +1,102 @@
+from pyspark.sql import SparkSession
+import matplotlib.pyplot as plt
+
+spark = SparkSession.builder.getOrCreate()
+
+MsBrand = spark.read.option("inferSchema", "true").csv("./MsBrand.csv", header=True)
+MsCountry = spark.read.option("inferSchema", "true").csv("./MsCountry.csv", header=True)
+MsCustomer = spark.read.option("inferSchema", "true").csv("./MsCustomer.csv", header=True)
+MsRamen = spark.read.option("inferSchema", "true").csv("./MsRamen.csv", header=True)
+MsRamenStyle = spark.read.option("inferSchema", "true").csv("./MsRamenStyle.csv", header=True)
+TransactionDetail = spark.read.option("inferSchema", "true").csv("./TransactionDetail.csv", header=True)
+TransactionHeader = spark.read.option("inferSchema", "true").csv("./TransactionHeader.csv", header=True)
+
+MsBrand.createOrReplaceTempView("MsBrand")
+MsCountry.createOrReplaceTempView("MsCountry")
+MsCustomer.createOrReplaceTempView("MsCustomer")
+MsRamen.createOrReplaceTempView("MsRamen")
+MsRamenStyle.createOrReplaceTempView("MsRamenStyle")
+TransactionDetail.createOrReplaceTempView("TransactionDetail")
+TransactionHeader.createOrReplaceTempView("TransactionHeader")
+
+
+# a. Show top 5 country which distributed the most number of ramen using pie plot.
+# Don’t forget to add title, labels, and percentage for the plot.
+
+a = spark.sql("""
+SELECT 
+    CountryName,
+    COUNT(RamenId) AS RamenCount
+FROM MsCountry
+JOIN MsRamen ON MsCountry.CountryId = MsRamen.CountryId
+GROUP BY CountryName
+ORDER BY RamenCount DESC
+LIMIT 5
+""")
+
+# a.show()
+
+a = a.toPandas()
+# print(a)
+
+plt.title("Top 5 Country Ramen Distributor")
+plt.pie(a["RamenCount"], labels=a["CountryName"], autopct="%.2f%%")
+plt.show()
+
+
+# b. Show the amount of revenue for each month within year 2019
+# using line plot. Don’t forget to add title, x-label,
+# and y-label for the plot.
+
+b = spark.sql("""
+SELECT
+    SUM(Quantity * RamenPrice) AS Revenue,
+    MONTH(TransactionDate) AS Month
+FROM TransactionHeader
+JOIN TransactionDetail ON TransactionHeader.TransactionId = TransactionDetail.TransactionId
+JOIN MsRamen ON MsRamen.RamenId = TransactionDetail.RamenId
+WHERE YEAR(TransactionDate) = 2019
+GROUP BY MONTH(TransactionDate)
+ORDER BY MONTH(TransactionDate) ASC
+""")
+
+# b.show()
+
+b = b.toPandas()
+# print(b)
+
+plt.title("Ramen Revenue in 2019")
+plt.plot(b["Month"], b["Revenue"])
+
+plt.xlabel("Month")
+plt.ylabel("Profit")
+
+plt.xticks(range(1, len(b["Month"]) + 1), b["Month"])
+plt.show()
+
+
+# c. Show top 5 ramen style that is used in making the ramen using
+# bar plot. Don’t forget to add title, x-label, and y-label
+# for the plot.
+
+c = spark.sql("""
+SELECT
+    RamenStyleName,
+    COUNT(RamenId) AS Freq
+FROM MsRamen
+JOIN MsRamenStyle ON MsRamen.RamenStyleId = MsRamenStyle.RamenStyleId
+GROUP BY RamenStyleName
+ORDER BY COUNT(RamenId) DESC
+LIMIT 5
+""")
+
+# c.show()
+
+c = c.toPandas()
+# print(c)
+
+plt.bar(c["RamenStyleName"], c["Freq"])
+plt.title("Top 5 Ramen Style")
+plt.xlabel("Ramen Style")
+plt.ylabel("Frequency")
+plt.show()
